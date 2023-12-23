@@ -134,7 +134,7 @@ DWORD TgtDeleg(LPCWSTR spn) {
 				std::wcout << L"[+] SPN Supports Unconstrained Deleg" << std::endl;
 #endif			
 				DWORD destSize;
-				//Getting AS-REQ blob
+				//Getting AP-REQ blob
 				BOOL base64 = CryptBinaryToStringA((CONST BYTE*)secbufPointer.pvBuffer, (DWORD)secbufPointer.cbBuffer, CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, NULL, &destSize);
 
 				char* apreqbuf = (char*)malloc((SIZE_T)destSize);

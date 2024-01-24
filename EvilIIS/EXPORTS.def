@@ -1,0 +1,3 @@
+LIBRARY EvilIIS
+EXPORTS
+	RegisterModule @1

@@ -69,3 +69,7 @@ done
 
 echo "Success!"
 ```
+
+Slide22:
+https://github.com/BinBashBanana/html-obfuscator
+https://github.com/keklick1337/StealthHTML

